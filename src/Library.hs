@@ -1,5 +1,6 @@
 module Library where
 import PdePreludat
+import GHC.OldList (isInfixOf)
 
 -- PARTE 1 - ¿Que es un alfajor?
 
@@ -130,7 +131,7 @@ aplicarNVeces grado modificacion alfajor
     | otherwise = alfajor -- (caso base)
 
 aplicarNIntentarPremium :: Number -> Alfajor -> Alfajor
-aplicarNIntentarPremium numero alfajor = aplicarNVeces numero intentarHacerPremium alfajor
+aplicarNIntentarPremium numero = aplicarNVeces numero intentarHacerPremium 
 
 -- > aplicarNIntentarPremiun 2 intentarPremiun havanna
 
@@ -176,19 +177,24 @@ type Criterio = Alfajor -> Bool
 -- gustan alfajores que contengan en su nombre “Capitán del espacio”.
 
 emi :: Cliente
-emi = UnCliente "Emi" 120 [] [buscaCapitanesDelEspacio] 
+emi = UnCliente "Emi" 120 [] [soloMarca "Capitan del espacio"] 
 
-buscaCapitanesDelEspacio :: Criterio
-buscaCapitanesDelEspacio alfajor = soloMarca "Capitan del espacio" alfajor 
+--buscaCapitanesDelEspacio :: Criterio
+--buscaCapitanesDelEspacio = soloMarca "Capitan del espacio"  
 
 soloMarca :: String -> Alfajor -> Bool
-soloMarca marca alfajor = contieneSubCadena marca (nombre alfajor)
+soloMarca marca alfajor = contieneSubCadena' marca (nombre alfajor)
 
+-- Ojo solo funcionar con las alfajores que comienzan con el nombre de la marca por ejemplo "Havanna" de "Havanna triple chocolate"
 contieneSubCadena :: String -> String -> Bool
 contieneSubCadena subcadena cadena 
     | length subcadena > length cadena            = False
     | take (length subcadena) cadena == subcadena = True
     | otherwise                                   = False
+
+-- Este si funciona bien!!
+contieneSubCadena' :: String -> String -> Bool
+contieneSubCadena' = isInfixOf 
 
 -- ii) Tomi: tiene $100; es pretencioso (solo le gustan los alfajores que contienen “premium” en su nombre*), 
 -- y dulcero (le gustan los alfajores cuyo coeficiente de dulzor es mayor a 0,15).
@@ -197,10 +203,10 @@ tomi :: Cliente
 tomi = UnCliente "Tomi" 100 [] [pretencioso, dulcero]
 
 pretencioso :: Criterio
-pretencioso alfajor = contieneSubCadena "premiun" (nombre alfajor)
+pretencioso alfajor = contieneSubCadena' "premium" (nombre alfajor)
 
 dulcero :: Criterio
-dulcero alfajor = ((> 0.15) . coeficienteDeDulzor) alfajor
+dulcero = (> 0.15) . coeficienteDeDulzor
 
 -- Ejemplo: no le gusta el Jorgelín premium porque a pesar de ser premium, su índice de dulzor es menor a 0,15, 
 -- así que sólo cumple 1 de sus criterios, no todos. En cambio, el Havanna premium sí cumple ambos, así que ese alfajor le gusta.
@@ -209,3 +215,60 @@ dulcero alfajor = ((> 0.15) . coeficienteDeDulzor) alfajor
 -- iii) Dante: tiene $200; es anti-dulce de leche, por lo que los alfajores que le gustan no deben tener 
 -- ninguna capa de dulce de leche, y además es extraño, lo que significa que solo le gustan alfajores que no son potables.
 
+dante :: Cliente
+dante = UnCliente "Dante" 200 [] [antiAlgo "dulce de leche", extranio]
+
+antiAlgo :: String -> Criterio
+antiAlgo algo = notElem algo . relleno
+
+--antiDulceDeLeche :: Criterio
+--antiDulceDeLeche = notElem "dulce de leche" . relleno
+
+extranio :: Criterio
+extranio = not . esPotable
+
+-- iv) Juan: tiene $500; es dulcero, busca marca de Jorgito, pretencioso y anti-mousse
+
+juan :: Cliente 
+juan = UnCliente "Juan" 500 [] [dulcero, soloMarca "Jorgito", pretencioso, antiAlgo "mousse"]
+
+--buscaJorgitos :: Criterio
+--buscaJorgitos = soloMarca "Jorgito"
+
+-- b) indicar, dada una lista de alfajores, cuáles le gustan a cierto cliente.
+-- RECORDAR: A un cliente le gusta un alfajor si cumple con todos sus criterios.
+
+leGustan :: Cliente -> [Alfajor] -> [Alfajor]
+leGustan cliente = filter (leGusta cliente)
+
+leGusta :: Cliente -> Alfajor -> Bool
+leGusta cliente alfajor = all (\criterio -> criterio alfajor) (criterios cliente)
+-- 1ero. Me meto a los criterios de los clientes 
+-- 2dos. Hago un todos cumplen (para cada criterio), el alfajor cumple con cada uno de los criterios del cliente
+
+-- c) que un cliente pueda comprar un alfajor: esto lo agrega a su lista de alfajores actuales, y gasta el dinero 
+-- correspondiente al precio del alfajor. Si no tiene suficiente plata, no lo compra y queda como está.
+
+intentarComprar :: Alfajor -> Cliente -> Cliente
+intentarComprar alfajor cliente 
+    | puedeComprarlo cliente alfajor = comprar alfajor cliente
+    | otherwise                      = cliente
+
+puedeComprarlo :: Cliente -> Alfajor -> Bool
+puedeComprarlo cliente = (< dinero cliente) . precio  
+
+comprar :: Alfajor -> Cliente -> Cliente
+comprar alfajor = gastarDinero (precio alfajor) . agregarAlfajor alfajor
+
+agregarAlfajor :: Alfajor -> Cliente -> Cliente
+agregarAlfajor alfajor cliente = cliente {alfajoresComprados = alfajor : alfajoresComprados cliente}
+
+gastarDinero :: Number -> Cliente -> Cliente
+gastarDinero dineroGastado cliente = cliente {dinero = dinero cliente - dineroGastado}
+
+-- d) que un cliente compre, de una lista de alfajores, todos aquellos que le gustan.
+
+comprarLosQueLeGustan :: Cliente -> [Alfajor]  -> Cliente
+comprarLosQueLeGustan cliente = foldr comprar cliente . leGustan cliente
+-- 1ero. Filtro los alfajores que le gustan
+-- 2dos. Compro, realiza una reduccion, compro todos los alfajores que le gustan impactando en el mismo cliente una y otra vez 
